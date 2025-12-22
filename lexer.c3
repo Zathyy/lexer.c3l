@@ -36,7 +36,7 @@ enum TokenType : ushort
 	CONTRACT, LCOMMENT, BCOMMENT,
 
 	// Identifiers and Strings
-	STRING, CHAR_LITERAL, BYTES, NUMBER, IDENT, TYPE_IDENT, CONST_IDENT,
+	STRING, CHAR_LITERAL, BYTES, INTEGER, REAL, IDENT, TYPE_IDENT, CONST_IDENT,
 	AT_IDENT, AT_TYPE_IDENT, AT_CONST_IDENT, HASH_IDENT, HASH_TYPE_IDENT,
 	HASH_CONST_IDENT,
 
@@ -456,6 +456,7 @@ fn Token? Lexer.lex_number(&self)
 {
 	char c;
 	int i = 0;
+	TokenType type = INTEGER;
 	while (!self.at_end() && (c = self.peek()) && (is_digit(c) || c == '-' ||
 		(i > 0 && (ascii::is_xdigit(c) || ascii::is_bdigit(c) || ascii::is_odigit(c) ||
 		        c == '.' || c == 'e' || c == 'E' || c == '+' ||
@@ -464,10 +465,22 @@ fn Token? Lexer.lex_number(&self)
 			c == 'u' || c == 'U' || c == 'l' || c == 'L' ||
 			c == 'i' || c == 'f' || c == 'd' || c == '_'))))
 	{
+		if (c == '.' || c == 'p' || c == 'P') type = REAL;
 		self.advance()!;
 		i++;
 	}
-	return self.emit_token(NUMBER);
+
+	// Handle real-type suffixes (f, d)
+	if (type == INTEGER)
+	{
+		usz len = self.pos - self.token_start;
+		String str = self.input[self.token_start:len];
+		bool hex_prefix = str.starts_with("0x") || str.starts_with("0X");
+		bool realtype_suffix = str.ends_with("f") || str.ends_with("d");
+		if (!hex_prefix && realtype_suffix) type = REAL;
+	}
+
+	return self.emit_token(type);
 }
 
 fn Token? Lexer.lex_attribute(&self)
