@@ -749,7 +749,8 @@ fn Token? DocLexer.next(&self)
 		{
 			if (try next_line = self.splitter.next())
 			{
-				if (next_line.trim().starts_with("@")) self.lexer.init(next_line);
+				bool starts_with_colon = next_line.trim().len > 0 && next_line.trim()[0] == ':';
+				if (next_line.trim().starts_with("@") || starts_with_colon) self.lexer.init(next_line);
 				return { .type = EOL };
 			}
 		}
