@@ -222,6 +222,7 @@ fn String token_to_string(Token tok, bool doc_mode = false)
 	case FOREACH_R: return tok.text;
 	case IF: return tok.text;
 	case INLINE: return tok.text;
+	case LENGTHOF: return tok.text;
 	case NEXTCASE: return tok.text;
 	case NUL: return tok.text;
 	case RETURN: return doc_mode ? "IDENT" : tok.text;
@@ -256,8 +257,8 @@ fn String token_to_string(Token tok, bool doc_mode = false)
 	case FAULT: return tok.text;
 	case ANY: return tok.text;
 	case TYPEID: return tok.text;
-	case CT_CONST_IDENT: return tok.text;
-	case CT_TYPE_IDENT: return tok.text;
+	case CT_CONST_IDENT: return "CT_CONST_IDENT";
+	case CT_TYPE_IDENT: return "CT_TYPE_IDENT";
 	case CT_IDENT: return "CT_IDENT";
 	case CT_ALIGNOF: return tok.text;
 	case CT_ASSERT: return tok.text;
@@ -282,6 +283,7 @@ fn String token_to_string(Token tok, bool doc_mode = false)
 	case CT_IF: return tok.text;
 	case CT_IS_CONST: return tok.text;
 	case CT_INCLUDE: return tok.text;
+	case CT_KINDOF: return tok.text;
 	case CT_NAMEOF: return tok.text;
 	case CT_OFFSETOF: return tok.text;
 	case CT_QNAMEOF: return tok.text;

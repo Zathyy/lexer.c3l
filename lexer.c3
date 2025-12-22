@@ -45,7 +45,7 @@ enum TokenType : ushort
 	FAULTDEF, FUNC, IMPORT, INTERFACE, MACRO, MODULE, STRUCT,
 	UNION, TYPEDEF, BREAK, CASE, CATCH, CONTINUE, DEFAULT,
 	DEFER, DO, ELSE, EXTERN, FALSE, FOR, FOREACH, FOREACH_R,
-	IF, INLINE, NEXTCASE, NUL, RETURN, STATIC, SWITCH,
+	IF, INLINE, LENGTHOF, NEXTCASE, NUL, RETURN, STATIC, SWITCH,
 	TLOCAL, TRUE, TRY, VAR, WHILE,
 
 	// Base Types (base_type_no_generic)
@@ -58,7 +58,7 @@ enum TokenType : ushort
 	CT_DEFINED, CT_ECHO, CT_ELSE, CT_ENDFOR, CT_ENDFOREACH,
 	CT_ENDIF, CT_ENDSWITCH, CT_ERROR, CT_EVAL, CT_EVALTYPE,
 	CT_EXEC, CT_EXTNAMEOF, CT_FEATURE, CT_FOR, CT_FOREACH,
-	CT_IF, CT_IS_CONST, CT_INCLUDE, CT_NAMEOF, CT_OFFSETOF,
+	CT_IF, CT_IS_CONST, CT_INCLUDE, CT_KINDOF, CT_NAMEOF, CT_OFFSETOF,
 	CT_QNAMEOF, CT_SIZEOF, CT_STRINGIFY, CT_SWITCH, CT_TYPEFROM,
 	CT_TYPEOF, CT_VAARG, CT_VACONST, CT_VACOUNT, CT_VAEXPR,
 	CT_VAREF, CT_VASPLAT, CT_VATYPE,
@@ -96,13 +96,12 @@ struct Lexer
 	usz  ln, col;
 	usz  token_start;
 	usz  nl_before;
-	bool inside_bracket;
 }
 
 fn Lexer* Lexer.init(&self, String input)
 {
 	*self = { .input = input, .pos = 0, .token_start = 0,
-		.nl_before = 0, .ln = 1, .col = 1, .inside_bracket = false };
+		.nl_before = 0, .ln = 1, .col = 1 };
 	return self;
 }
 
@@ -141,6 +140,12 @@ fn char Lexer.peek(&self)
 {
 	if (self.at_end()) return 0;
 	return self.input[self.pos];
+}
+
+fn char Lexer.peek2(&self)
+{
+	if (self.pos + 1 >= self.input.len) return 0;
+	return self.input[self.pos + 1];
 }
 
 fn bool Lexer.must(&self, String s)
@@ -316,12 +321,12 @@ fn Token? Lexer.next(&self)
 			switch
 			{
 				case self.must("[<"):  type = LVEC;
-				case self.must("["):   type = LBRACKET; self.inside_bracket = true;
+				case self.must("["):   type = LBRACKET;
 				default: return INVALID_CHAR?;
 			}
 			return self.emit_token(type);
 
-		case ']': self.advance()!; self.inside_bracket = false; return self.emit_token(RBRACKET);
+		case ']': self.advance()!; return self.emit_token(RBRACKET);
 		case '{': self.advance()!; return self.emit_token(LBRACE);
 		case '}': self.advance()!; return self.emit_token(RBRACE);
 		case '(': self.advance()!; return self.emit_token(LPAREN);
@@ -458,11 +463,6 @@ fn Token? Lexer.lex_number(&self)
 	char c;
 	int i = 0;
 	TokenType type = INTEGER;
-	if (self.inside_bracket)
-	{
-		while (!self.at_end() && (c = self.peek()) && is_digit(c)) self.advance()!;
-		return self.emit_token(type);
-	}
 	while (!self.at_end() && (c = self.peek()) && (is_digit(c) || c == '-' ||
 		(i > 0 && (ascii::is_xdigit(c) || ascii::is_bdigit(c) || ascii::is_odigit(c) ||
 		        c == '.' || c == 'e' || c == 'E' || c == '+' ||
@@ -471,6 +471,7 @@ fn Token? Lexer.lex_number(&self)
 			c == 'u' || c == 'U' || c == 'l' || c == 'L' ||
 			c == 'i' || c == 'f' || c == 'd' || c == '_'))))
 	{
+		if (c == '.' && self.peek2() == '.') break;
 		if (c == '.' || c == 'p' || c == 'P') type = REAL;
 		self.advance()!;
 		i++;
@@ -547,6 +548,7 @@ fn Token? Lexer.lex_ident(&self)
 		case "foreach":   return self.emit_token(FOREACH);
 		case "foreach_r": return self.emit_token(FOREACH_R);
 		case "if":        return self.emit_token(IF);
+		case "lengthof":  return self.emit_token(LENGTHOF);
 		case "nextcase":  return self.emit_token(NEXTCASE);
 		case "null":      return self.emit_token(NUL);
 		case "return":    return self.emit_token(RETURN);
@@ -650,6 +652,7 @@ fn Token? Lexer.lex_compile_time(&self)
 		case "$if":         return self.emit_token(CT_IF);
 		case "$is_const":   return self.emit_token(CT_IS_CONST);
 		case "$include":    return self.emit_token(CT_INCLUDE);
+		case "$kindof":     return self.emit_token(CT_KINDOF);
 		case "$nameof":     return self.emit_token(CT_NAMEOF);
 		case "$offsetof":   return self.emit_token(CT_OFFSETOF);
 		case "$qnameof":    return self.emit_token(CT_QNAMEOF);
@@ -729,12 +732,12 @@ struct DocLexer
 {
 	Splitter splitter;
 	Lexer    lexer;
-	bool     init_lexer;
+	bool     lexer_init;
 }
 
 fn DocLexer* DocLexer.init(&self, String doc_str)
 {
-	*self = { .splitter = doc_str.tokenize("\n"), .lexer = {}, .init_lexer = false };
+	*self = { .splitter = doc_str.tokenize_all("\n", true), .lexer = {}, .lexer_init = false };
 	return self;
 }
 
@@ -742,16 +745,25 @@ fn Token? DocLexer.next(&self)
 {
 	if (self.lexer.at_end())
 	{
-		bool emit_eol = self.init_lexer;
-		self.init_lexer = false;
-		while (try next_line = self.splitter.next())
+		if (self.lexer_init)
 		{
-			if (!next_line.trim().starts_with("@")) continue;
-			self.lexer.init(next_line);
-			self.init_lexer = true;
-			break;
+			if (try next_line = self.splitter.next())
+			{
+				if (next_line.trim().starts_with("@")) self.lexer.init(next_line);
+				return { .type = EOL };
+			}
 		}
-		if (emit_eol) return { .type = EOL };
+		else
+		{
+			while (try next_line = self.splitter.next())
+			{
+				if (!next_line.trim().starts_with("@")) continue;
+				self.lexer.init(next_line);
+				self.lexer_init = true;
+				break;
+			}
+		}
+
 	}
 	return self.lexer.next();
 }
@@ -764,13 +776,14 @@ fn void test_doc_lexer() @test
 
 		 @param c : "the character to check"
 
+
 		 @param [in] set : "String containing the characters"
 		 @pure
 		 @return "True if a character is in the set"
 	`);
 
 	TokenType[] want = {
-		AT_IDENT, IDENT, COLON, STRING, EOL,
+		AT_IDENT, IDENT, COLON, STRING, EOL, EOL, EOL,
 		AT_IDENT, LBRACKET, IDENT, RBRACKET, IDENT, COLON, STRING, EOL,
 		AT_IDENT, EOL,
 		AT_IDENT, STRING, EOL,
