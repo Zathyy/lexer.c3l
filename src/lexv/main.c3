@@ -70,19 +70,39 @@ fn bool? validate(String filename, String tokens) => @pool()
 	while (!lexer.at_end())
 	{
 		Token tok = lexer.next()!;
+
 		// Skip trivia tokens
 		switch (tok.type)
 		{
-			case LCOMMENT: case BCOMMENT: continue;
-			default: break;
+			case LCOMMENT:
+			case BCOMMENT: continue;
+			case CONTRACT:
+				// buf.append_string("<* ");
+				DocLexer dl;
+				dl.init(tok.text);
+				DString buf2 = dstring::temp("<* ");
+				while (try doctok = dl.next())
+				{
+					if (doctok.type == EOF) break;
+					io::eprintfn("doc tok: %s [type: %s]", token_to_string(doctok), doctok.type);
+					// buf.append_string(token_to_string(doctok));
+					// buf.append_char(' ');
+					buf2.append_string(token_to_string(doctok));
+					buf2.append_char(' ');
+				}
+				// buf.append_string("*> ");
+				buf2.append_string("*> ");
+				io::printfn("doc str: %s", buf2.str_view());
+				buf.append_dstring(buf2);
+			default:
+				buf.append_string(token_to_string(tok));
+				buf.append_char(' ');
 		}
 
-		String tok_str = token_to_string(tok);
-		buf.append_string(tok_str);
-		buf.append_char(' ');
 		String s = buf.str_view();
 		if (s != tokens[:s.len])
 		{
+			String tok_str = token_to_string(tok);
 			io::eprintf("Token mismatch in Ln %d, Col %d -- got: %s, want: %s\n",
 				lexer.ln, lexer.col, tok_str, tokens[s.len-tok_str.len-1:tok_str.len]);
 			return false;
@@ -240,7 +260,7 @@ fn String token_to_string(Token tok)
 	case TYPEID: return tok.text;
 	case CT_CONST_IDENT: return tok.text;
 	case CT_TYPE_IDENT: return tok.text;
-	case CT_IDENT: return tok.text;
+	case CT_IDENT: return "CT_IDENT";
 	case CT_ALIGNOF: return tok.text;
 	case CT_ASSERT: return tok.text;
 	case CT_ASSIGNABLE: return tok.text;
@@ -279,6 +299,7 @@ fn String token_to_string(Token tok)
 	case CT_VAREF: return tok.text;
 	case CT_VASPLAT: return tok.text;
 	case CT_VATYPE: return tok.text;
+	case EOL: return "<EOL>";
 	case EOF: return "EOF";
 	}
 }

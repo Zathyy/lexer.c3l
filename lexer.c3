@@ -4,7 +4,7 @@ import std::io;
 import std::collections::list;
 import std::ascii;
 
-faultdef INVALID_CHAR;
+faultdef INVALID_CHAR, CONTRACT_END;
 
 enum TokenType : ushort
 {
@@ -63,7 +63,7 @@ enum TokenType : ushort
 	CT_TYPEOF, CT_VAARG, CT_VACONST, CT_VACOUNT, CT_VAEXPR,
 	CT_VAREF, CT_VASPLAT, CT_VATYPE,
 
-	EOF,
+	EOL, EOF,
 }
 
 struct Token (Printable)
@@ -717,4 +717,62 @@ fn TokenType classify(String s, char prefix = 0)
 			return IDENT;
 	}
 	return INVALID;
+}
+
+struct DocLexer
+{
+	Splitter splitter;
+	Lexer    lexer;
+	bool     init_lexer;
+}
+
+fn DocLexer* DocLexer.init(&self, String doc_str)
+{
+	*self = { .splitter = doc_str.tokenize("\n"), .lexer = {}, .init_lexer = false };
+	return self;
+}
+
+fn Token? DocLexer.next(&self)
+{
+	if (self.lexer.at_end())
+	{
+		bool emit_eol = self.init_lexer;
+		self.init_lexer = false;
+		while (try next_line = self.splitter.next())
+		{
+			if (!next_line.trim().starts_with("@")) continue;
+			self.lexer.init(next_line);
+			self.init_lexer = true;
+			break;
+		}
+		if (emit_eol) return { .type = EOL };
+	}
+	return self.lexer.next();
+}
+
+fn void test_doc_lexer() @test
+{
+	DocLexer dl;
+	dl.init(`
+		 Check if a character is in a set.
+
+		 @param c : "the character to check"
+		 @param [in] set : "String containing the characters"
+		 @pure
+		 @return "True if a character is in the set"
+	`);
+
+	TokenType[] want = {
+		AT_IDENT, IDENT, COLON, STRING, EOL,
+		AT_IDENT, LBRACKET, IDENT, RBRACKET, IDENT, COLON, STRING, EOL,
+		AT_IDENT, EOL,
+		AT_IDENT, STRING, EOL,
+		EOF,
+	};
+
+	while (try tok = dl.next() && want.len)
+	{
+		assert(tok.type == want[0]);
+		want = want[1..];
+	}
 }
