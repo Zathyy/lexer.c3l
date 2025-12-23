@@ -460,7 +460,7 @@ fn void? Lexer.scan_contract(&self)
 
 fn Token? Lexer.lex_number(&self)
 {
-	char c;
+	char c, prev;
 	int i = 0;
 	TokenType type = INTEGER;
 	while (!self.at_end() && (c = self.peek()) && (is_digit(c) || c == '-' ||
@@ -471,20 +471,22 @@ fn Token? Lexer.lex_number(&self)
 			c == 'u' || c == 'U' || c == 'l' || c == 'L' ||
 			c == 'i' || c == 'f' || c == 'd' || c == '_'))))
 	{
+		if ((c == '+' || c == '-') && (prev != 'e' && prev != 'E' && prev != 'p' && prev != 'P')) break;
 		if (c == '.' && self.peek2() == '.') break;
 		if (c == '.' || c == 'p' || c == 'P') type = REAL;
 		self.advance()!;
 		i++;
+		prev = c;
 	}
 
-	// Handle real-type suffixes (f, d)
+	// Handle real-type suffixes (f, d) and e, E
 	if (type == INTEGER)
 	{
 		usz len = self.pos - self.token_start;
 		String str = self.input[self.token_start:len];
 		bool hex_prefix = str.starts_with("0x") || str.starts_with("0X");
-		bool realtype_suffix = str.ends_with("f") || str.ends_with("d");
-		if (!hex_prefix && realtype_suffix) type = REAL;
+		bool realtype = str.ends_with("f") || str.ends_with("d") || str.contains("e") || str.contains("E");
+		if (!hex_prefix && realtype) type = REAL;
 	}
 
 	return self.emit_token(type);
