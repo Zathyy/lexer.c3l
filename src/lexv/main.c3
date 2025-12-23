@@ -13,8 +13,18 @@ module lexv;
 import std::io;
 import c3::lexer;
 
-fn void main() => @pool()
+fn int main(String[] args) => @pool()
 {
+	if (args.len > 1)
+	{
+		foreach (arg: args[1..])
+		{
+			io::printfn("# %s", arg);
+			(void)validate(arg, "", true);
+		}
+		return 0;
+	}
+
 	usz pass, total;
 	while READ_INPUT: (try header = io::treadline(io::stdin()))
 	{
@@ -56,10 +66,10 @@ fn void main() => @pool()
 	io::printfn("Passed: %d", pass);
 	io::printfn("Total : %d", total);
 	if (total > 0) io::printfn("Ratio : %.1f%%", 100.0 * (double)pass / (double)total);
-
+	return pass != total ? 1 : 0;
 }
 
-fn bool? validate(String filename, String tokens) => @pool()
+fn bool? validate(String filename, String tokens, bool print_only = false) => @pool()
 {
 	char[] content = file::load_temp(filename)!;
 
@@ -99,13 +109,15 @@ fn bool? validate(String filename, String tokens) => @pool()
 		}
 
 		String s = buf.str_view();
-		if (s != tokens[:s.len])
+		if (!print_only && s.len < tokens.len && s != tokens[:s.len])
 		{
 			io::eprintf("Token mismatch in Ln %d, Col %d -- got: %s, want: %s\n",
 				lexer.ln, lexer.col, s[^len..], tokens[s.len-len:len]);
 			return false;
 		}
 	}
+
+	if (print_only) io::printfn("%s", buf.str_view());
 
 	return true;
 }
