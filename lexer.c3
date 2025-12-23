@@ -22,7 +22,7 @@ enum TokenType : ushort
 	// Comparison
 	AMP, BIT_OR, BIT_XOR, LESS, GREATER, SHR_OP, SHL_OP, INC_OP, DEC_OP,
 	AND, OR, LE_EQ, GE_EQ, EQEQ, NOT_EQUAL, CT_AND_OP,
-	CT_OR_OP, CT_CONCAT_OP, CT_TERNARY,
+	CT_OR_OP, CT_CONCAT_ASSIGN, CT_CONCAT_OP, CT_TERNARY,
 
 	// Punctuation
 	EOS, COLON, SCOPE, COMMA, DOT, DOTDOT, ELLIPSIS,
@@ -232,10 +232,11 @@ fn Token? Lexer.next(&self)
 		case '+':
 			switch
 			{
-				case self.must("+++"): type = CT_CONCAT_OP;
-				case self.must("++"):  type = INC_OP;
-				case self.must("+="):  type = ADD_ASSIGN;
-				case self.must("+"):   type = PLUS;
+				case self.must("+++="): type = CT_CONCAT_ASSIGN;
+				case self.must("+++"):  type = CT_CONCAT_OP;
+				case self.must("++"):   type = INC_OP;
+				case self.must("+="):   type = ADD_ASSIGN;
+				case self.must("+"):    type = PLUS;
 				default: return INVALID_CHAR?;
 			}
 			return self.emit_token(type);
@@ -760,6 +761,8 @@ fn Token? DocLexer.next(&self)
 		{
 			while (try next_line = self.splitter.next())
 			{
+ 				// TODO: trim <* *> when lexing?
+				next_line = next_line.trim(" \n\t\r\f\v<**>");
 				if (!next_line.trim().starts_with("@")) continue;
 				self.lexer.init(next_line);
 				self.lexer_init = true;

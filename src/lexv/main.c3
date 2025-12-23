@@ -155,6 +155,7 @@ fn String token_to_string(Token tok, bool doc_mode = false)
 	case NOT_EQUAL: return "!=";
 	case CT_AND_OP: return "&&&";
 	case CT_OR_OP: return "|||";
+	case CT_CONCAT_ASSIGN: return "+++=";
 	case CT_CONCAT_OP: return "+++";
 	case CT_TERNARY: return "???";
 	case EOS: return ";";
