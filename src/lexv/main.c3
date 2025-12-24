@@ -95,19 +95,20 @@ fn bool? validate(String filename, String tokens, bool print_only = false) => @p
 				continue;
 
 			case CONTRACT:
-				DString buf2 = dstring::temp("<* ");
+				DString contract = dstring::temp("");
 
 				ContractLexer dl;
 				dl.init(tok.text);
-				while (try doctok = dl.next())
+				while (try ctok = dl.next())
 				{
-					buf2.append_string(token_to_string(doctok, true));
-					buf2.append_char(' ');
+					contract.append_string(token_to_string(ctok, true));
+					contract.append_char(' ');
 				}
 
-				buf2.append_string("*> ");
-				len = buf2.str_view().len;
-				buf.append_dstring(buf2);
+				buf.append_string("<* ");
+				buf.append_dstring(contract);
+				buf.append_string("*> ");
+				len = contract.str_view().len + 6;
 
 			default:
 				buf.append_string(token_to_string(tok));
