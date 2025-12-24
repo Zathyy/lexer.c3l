@@ -16,7 +16,10 @@ echo "Using the unit tests in: ${unittests}"
 # Collect all files from the C3 standard library and unit tests.
 files=()
 files+=( $(find ${stdlib} -name "*.c3") )
-files+=( $(find ${unittests} -name "*.c3") )
+
+if [ -d ${unittests} ]; then
+	files+=( $(find ${unittests} -name "*.c3") )
+fi
 
 # Run the validation against the `c3c` compiler lexical output.
 c3c -E compile-only ${files[@]} | build/lexv

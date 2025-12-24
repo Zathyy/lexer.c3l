@@ -19,7 +19,6 @@ jobs:
       - uses: radekm/setup-c3@v2
         with:
           version: latest-prerelease-tag
-      - uses: actions/setup-go@v4
-      - name: Run tests
+      - name: Run test script
         run: |
           ./test.sh
