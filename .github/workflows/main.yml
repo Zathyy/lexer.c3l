@@ -19,6 +19,9 @@ jobs:
       - uses: radekm/setup-c3@v2
         with:
           version: latest-prerelease-tag
+      - name: Run c3 tests
+        run: |
+          c3c test
       - name: Run test script
         run: |
           ./test.sh

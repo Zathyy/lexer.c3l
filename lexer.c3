@@ -696,10 +696,10 @@ fn Token? ContractLexer.next(&self)
 	return self.lexer.next();
 }
 
-fn void test_doc_lexer() @test
+fn void test_contract_lexer() @test
 {
 	ContractLexer dl;
-	dl.init(`*
+	dl.init(`<*
 		 Check if a character is in a set.
 
 		 @param c : "the character to check"
