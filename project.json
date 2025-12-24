@@ -4,9 +4,6 @@
 	"output": "build",
 	"sources": [ "*" ],
 	"targets": {
-		"testrunner": {
-			"type": "executable"
-		},
 		"lexv": {
 			"type": "executable",
 			"sources": [ "src/lexv/*" ]
