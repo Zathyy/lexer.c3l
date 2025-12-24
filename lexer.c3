@@ -815,25 +815,37 @@ enum NumberState : const inline char @private
 	BININT  = 5,
 	REAL    = 6,
 	ERROR   = 7,
-	HEXREAL = 8
+	HEXDEC  = 8,  // Hex decimal: HEXINT "." HEXINT
+	INTDEC  = 9,  // Integer decimal: INT "." INT
+	SCINOT  = 10, // Scientific notation: 1[eEpP]+10
+	EXP     = 11, // Exponent
+	EXPSIGN = 12, // Exponent sign: +, -
+	INTSUF  = 13, // Int suffixes: [iuUlL]
+	REALSUF = 14, // Real suffixes: d, f
 }
 
 NumberState[*][*] transitions @private = {
 	// Alphabet
-	// [0]      [1]      [2-7]    [8-9]    [_]      [aA]     [bB]     [cC]     [dD]    [eE]      [fF]     [iI]     [lL]     [oO]    [pP]     [uU]     [xX]    [+-]     [.]      [eof]
-	{  ZERO,    INTEGER, INTEGER, INTEGER, ERROR,   ERROR,   ERROR,   ERROR,   ERROR,  ERROR,    ERROR,   ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   ERROR,  INIT,    ERROR,   ERROR   }, // State 0: INIT
-	{  INTEGER, INTEGER, INTEGER, INTEGER, INTEGER, ERROR,   ERROR,   ERROR,   REAL,   REAL,     REAL,    INTEGER, INTEGER, ERROR,  REAL,    INTEGER, ERROR,  ERROR,   REAL,    INTEGER }, // State 1: INTEGER
-	{  INTEGER, INTEGER, INTEGER, INTEGER, INTEGER, ERROR,   BININT,  ERROR,   REAL,   ERROR,    REAL,    INTEGER, INTEGER, OCTINT, ERROR,   INTEGER, HEXINT, ERROR,   REAL,    INTEGER }, // State 2: ZERO
-	{  HEXINT,  HEXINT,  HEXINT,  HEXINT,  HEXINT,  HEXINT,  HEXINT,  HEXINT,  HEXINT, HEXINT,   HEXINT,  INTEGER, INTEGER, ERROR,  HEXREAL, INTEGER, ERROR,  ERROR,   HEXREAL, INTEGER }, // State 3: HEXINT
-	{  OCTINT,  OCTINT,  OCTINT,  ERROR,   OCTINT,  ERROR,   ERROR,   ERROR,   ERROR,  ERROR,    ERROR,   INTEGER, INTEGER, ERROR,  ERROR,   INTEGER, ERROR,  ERROR,   ERROR,   INTEGER }, // State 4: OCTINT
-	{  BININT,  BININT,  ERROR,   ERROR,   BININT,  ERROR,   ERROR,   ERROR,   ERROR,  ERROR,    ERROR,   INTEGER, INTEGER, ERROR,  ERROR,   INTEGER, ERROR,  ERROR,   ERROR,   INTEGER }, // State 5: BININT
-	{  REAL,    REAL,    REAL,    REAL,    REAL,    ERROR,   ERROR,   ERROR,   REAL,   REAL,     REAL,    ERROR,   ERROR,   ERROR,  REAL,    ERROR,   ERROR,  REAL,    ERROR,   REAL    }, // State 6: REAL
-	{  ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,  ERROR,    ERROR,   ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   ERROR   }, // State 7: ERROR
-	{  HEXREAL, HEXREAL, HEXREAL, HEXREAL, HEXREAL, HEXREAL, HEXREAL, HEXREAL, HEXREAL, HEXREAL, HEXREAL, ERROR,   ERROR,   ERROR,  HEXREAL, ERROR,   ERROR,  HEXREAL, ERROR,   REAL    }, // State 8: HEXREAL
+	// [0]      [1]      [2-7]    [8-9]    [_]      [aA]     [bB]     [cC]     [dD]     [eE]      [fF]     [i]      [lL]     [oO]    [pP]     [uU]     [xX]    [+-]     [.]      [eof]
+	{  ZERO,    INTEGER, INTEGER, INTEGER, ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,    ERROR,   ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   ERROR,  INIT,    ERROR,   ERROR   }, // State 0:  INIT
+	{  INTEGER, INTEGER, INTEGER, INTEGER, INTEGER, ERROR,   ERROR,   ERROR,   REALSUF, SCINOT,   REALSUF, INTSUF,  INTSUF,  ERROR,  ERROR,   INTSUF,  ERROR,  ERROR,   INTDEC,  INTEGER }, // State 1:  INTEGER
+	{  INTEGER, INTEGER, INTEGER, INTEGER, INTEGER, ERROR,   BININT,  ERROR,   REALSUF, SCINOT,   REALSUF, INTSUF,  INTSUF,  OCTINT, ERROR,   INTSUF,  HEXINT, ERROR,   INTDEC,  INTEGER }, // State 2:  ZERO
+	{  HEXINT,  HEXINT,  HEXINT,  HEXINT,  HEXINT,  HEXINT,  HEXINT,  HEXINT,  HEXINT,  HEXINT,   HEXINT,  INTSUF,  INTSUF,  ERROR,  SCINOT,  INTSUF,  ERROR,  ERROR,   HEXDEC,  INTEGER }, // State 3:  HEXINT
+	{  OCTINT,  OCTINT,  OCTINT,  ERROR,   OCTINT,  ERROR,   ERROR,   ERROR,   ERROR,   ERROR,    ERROR,   INTSUF,  INTSUF,  ERROR,  ERROR,   INTSUF,  ERROR,  ERROR,   ERROR,   INTEGER }, // State 4:  OCTINT
+	{  BININT,  BININT,  ERROR,   ERROR,   BININT,  ERROR,   ERROR,   ERROR,   ERROR,   ERROR,    ERROR,   INTSUF,  INTSUF,  ERROR,  ERROR,   INTSUF,  ERROR,  ERROR,   ERROR,   INTEGER }, // State 5:  BININT
+	{  ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,    ERROR,   ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   REAL    }, // State 6:  REAL
+	{  ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,    ERROR,   ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   ERROR   }, // State 7:  ERROR
+	{  HEXDEC,  HEXDEC,  HEXDEC,  HEXDEC,  HEXDEC,  HEXDEC,  HEXDEC,  HEXDEC,  HEXDEC,  HEXDEC,   HEXDEC,  ERROR,   ERROR,   ERROR,  SCINOT,  ERROR,   ERROR,  ERROR,   ERROR,   ERROR   }, // State 8:  HEXDEC
+	{  INTDEC,  INTDEC,  INTDEC,  INTDEC,  INTDEC,  ERROR,   ERROR,   ERROR,   REALSUF, SCINOT,   REALSUF, ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   REAL    }, // State 9:  INTDEC
+	{  EXP,     EXP,     EXP,     EXP,     ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,    ERROR,   ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   ERROR,  EXPSIGN, ERROR,   ERROR   }, // State 10: SCINOT
+	{  EXP,     EXP,     EXP,     EXP,     ERROR,   ERROR,   ERROR,   ERROR,   REALSUF, ERROR,    REALSUF, ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   REAL    }, // State 11: EXP
+	{  EXP,     EXP,     EXP,     EXP,     ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,    ERROR,   ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   ERROR   }, // State 12: EXPSIGN
+	{  ERROR,   INTSUF,  INTSUF,  INTSUF,  ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,    ERROR,   ERROR,   INTSUF,  ERROR,  ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   INTEGER }, // State 13: INTSUF
+	{  ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,   ERROR,    ERROR,   ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   ERROR,  ERROR,   ERROR,   REAL    }, // State 14: REALSUF
 };
 
 
-fn NumberState next_state(NumberState s, char c, bool eol = false)
+fn NumberState next_state(NumberState s, char c)
 {
 	switch
 	{
@@ -848,7 +860,7 @@ fn NumberState next_state(NumberState s, char c, bool eol = false)
 		case c == 'd' || c == 'D': return transitions[s][8];
 		case c == 'e' || c == 'E': return transitions[s][9];
 		case c == 'f' || c == 'F': return transitions[s][10];
-		case c == 'i' || c == 'I': return transitions[s][11];
+		case c == 'i':             return transitions[s][11];
 		case c == 'l' || c == 'L': return transitions[s][12];
 		case c == 'o' || c == 'O': return transitions[s][13];
 		case c == 'p' || c == 'P': return transitions[s][14];
@@ -856,7 +868,7 @@ fn NumberState next_state(NumberState s, char c, bool eol = false)
 		case c == 'x' || c == 'X': return transitions[s][16];
 		case c == '+' || c == '-': return transitions[s][17];
 		case c == '.':             return transitions[s][18];
-		case eol:                  return transitions[s][19];
+		case c == 0:               return transitions[s][19]; // EOL
 		default:                   return ERROR;
 	}
 }
@@ -866,7 +878,7 @@ fn TokenType classify(String s)
 {
 	NumberState state = INIT;
 	foreach (c: s) state = next_state(state, c);
-	state = next_state(state, 0, true);
+	state = next_state(state, 0);
 	switch (state)
 	{
 		case INTEGER: return TokenType.INTEGER;
@@ -884,34 +896,34 @@ struct TestCase @private
 fn void test_number_state() @test
 {
 	TestCase[*] tests = {
-		{ .str  = "+",          .want = ERROR },
-		{ .str  = "-",          .want = ERROR },
-		{ .str  = "0",          .want = INTEGER },
-		{ .str  = "-1",         .want = INTEGER },
-		{ .str  = "123",        .want = INTEGER },
-		{ .str  = "123ul",      .want = INTEGER },
-		{ .str  = "123i32",     .want = INTEGER },
-		{ .str  = "0xdeadbeeF", .want = INTEGER },
-		{ .str  = "0xcafeUL",   .want = INTEGER },
-		{ .str  = "0b101UL",    .want = INTEGER },
-		{ .str  = "1xbeef",     .want = ERROR },
-		{ .str  = "0b1001.001", .want = ERROR },
-		{ .str  = "0b123",      .want = ERROR },
-		{ .str  = "0xbeeF.123", .want = REAL },
-		{ .str  = "0f",         .want = REAL },
-		{ .str  = "0.5f",       .want = REAL },
-		{ .str  = "123.0",      .want = REAL },
-		{ .str  = "123.0e-10",  .want = REAL },
-		{ .str  = "123f",       .want = REAL },
-		{ .str  = "123d",       .want = REAL },
+		{ .str  = "+",            .want = ERROR },
+		{ .str  = "-",            .want = ERROR },
+		{ .str  = "0",            .want = INTEGER },
+		{ .str  = "-1",           .want = INTEGER },
+		{ .str  = "123",          .want = INTEGER },
+		{ .str  = "123ul",        .want = INTEGER },
+		{ .str  = "123i32",       .want = INTEGER },
+		{ .str  = "0xdeadbeeF",   .want = INTEGER },
+		{ .str  = "0xcafeUL",     .want = INTEGER },
+		{ .str  = "0b101UL",      .want = INTEGER },
+		{ .str  = "1xbeef",       .want = ERROR },
+		{ .str  = "0b1001.001",   .want = ERROR },
+		{ .str  = "0b123",        .want = ERROR },
+		{ .str  = "0xbeeF.123p1", .want = REAL },
+		{ .str  = "0f",           .want = REAL },
+		{ .str  = "0.5f",         .want = REAL },
+		{ .str  = "123.0",        .want = REAL },
+		{ .str  = "123.0e-10",    .want = REAL },
+		{ .str  = "123f",         .want = REAL },
+		{ .str  = "123d",         .want = REAL },
 	};
 
 	foreach (tc: tests)
 	{
 		NumberState s = INIT;
 		foreach (c: tc.str) s = next_state(s, c);
-		s = next_state(s, 0, true);
-		assert(s == tc.want, "wrong state: got: %s, want: %s", s, tc.want);
+		s = next_state(s, 0);
+		assert(s == tc.want, "wrong state (%s): got: %s, want: %s", tc.str, s, tc.want);
 	}
 }
 
