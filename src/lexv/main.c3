@@ -84,16 +84,16 @@ fn bool? validate(String filename, String tokens, bool print_only = false) => @p
 
 	Lexer lexer;
 	lexer.init((String)content[..]);
-	while (!lexer.at_end())
+	while (try tok = lexer.next())
 	{
-		Token tok = lexer.next()!;
-
-		// Skip trivia tokens
 		usz len;
 		switch (tok.type)
 		{
 			case LCOMMENT:
-			case BCOMMENT: continue;
+			case BCOMMENT:
+				// Skip trivia tokens
+				continue;
+
 			case CONTRACT:
 				DString buf2 = dstring::temp("<* ");
 
@@ -101,7 +101,6 @@ fn bool? validate(String filename, String tokens, bool print_only = false) => @p
 				dl.init(tok.text);
 				while (try doctok = dl.next())
 				{
-					if (doctok.type == EOF) break;
 					buf2.append_string(token_to_string(doctok, true));
 					buf2.append_char(' ');
 				}
@@ -109,6 +108,7 @@ fn bool? validate(String filename, String tokens, bool print_only = false) => @p
 				buf2.append_string("*> ");
 				len = buf2.str_view().len;
 				buf.append_dstring(buf2);
+
 			default:
 				buf.append_string(token_to_string(tok));
 				buf.append_char(' ');

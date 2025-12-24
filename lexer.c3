@@ -184,7 +184,7 @@ fn Token? Lexer.next(&self)
 	self.scan_whitespace()!;
 
 	self.token_start = self.pos;
-	if (self.at_end()) return self.emit_token(EOF);
+	if (self.at_end()) return io::EOF?;
 
 	switch (c = self.peek())
 	{
@@ -732,7 +732,6 @@ fn void test_doc_lexer() @test
 		AT_IDENT, LBRACKET, IDENT, RBRACKET, IDENT, COLON, STRING, EOL,
 		AT_IDENT, EOL,
 		AT_IDENT, STRING, EOL,
-		EOF,
 	};
 
 	while (try tok = dl.next() && want.len)
