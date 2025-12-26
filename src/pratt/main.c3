@@ -49,6 +49,13 @@ fn Token PrattParser.consume(&self)
 	return tok;
 }
 
+fn bool PrattParser.match(&self, TokenType expect)
+{
+	if (self.peek().type != expect) return false;
+	(void)self.consume();
+	return true;
+}
+
 fn Expr*? PrattParser.parse(&self) => parse_expr(self, 0)!;
 
 fn Expr*? parse_expr(PrattParser *p, int min_bp)
@@ -88,6 +95,7 @@ enum Assoc : const inline char
 
 enum Precedence : const inline int
 {
+	COMPARISON =  5,
 	ASSIGNMENT = 10,
 	CONDITION  = 20,
 	SUM        = 30,
@@ -115,6 +123,8 @@ Parselet[*] pratt_table = {
 	[TokenType.PLUS]    = { &parse_unary,  &parse_binary, 60, 30, Assoc.LEFT },
 	[TokenType.MINUS]   = { &parse_unary,  &parse_binary, 60, 30, Assoc.LEFT },
 	[TokenType.STAR]    = { null,          &parse_binary,  0, 40, Assoc.LEFT },
+	[TokenType.DIV]     = { null,          &parse_binary,  0, 40, Assoc.LEFT },
+	[TokenType.LPAREN]  = { &parse_group,           null,  0,  0, Assoc.LEFT },
 	[TokenType.EOF]     = {},
 };
 
@@ -129,6 +139,17 @@ fn Expr*? parse_ident(PrattParser *p, Token tok)
 {
 	Expr *e = mem::tnew(Expr);
 	*e = { .kind = IDENT_EXPR, .as.i = tok };
+	return e;
+}
+
+fn Expr*? parse_group(PrattParser *p, Token tok)
+{
+	Expr *e = parse_expr(p, 0)!;
+	if (!p.match(TokenType.RPAREN))
+	{
+		// TODO: Better throw error than abort
+		abort("Unclosed parenthesis");
+	}
 	return e;
 }
 
@@ -148,7 +169,9 @@ fn Expr*? parse_unary(PrattParser *p, Token tok)
 fn Expr*? parse_binary(PrattParser *p, Expr *left, Token tok)
 {
 	Parselet parselet = pratt_table[tok.type];
-	int next_bp = parselet.infix_bp + parselet.assoc; // If left assoc, add 1 to bp.
+
+	// If operator is left-associated, add 1 to binding power.
+	int next_bp = parselet.infix_bp + parselet.assoc;
 
 	Expr* right = parse_expr(p, next_bp)!;
 
