@@ -97,7 +97,7 @@ enum Precedence : const inline int
 {
 	COMPARISON =  5,
 	ASSIGNMENT = 10,
-	CONDITION  = 20,
+	TERNARY    = 20,
 	SUM        = 30,
 	PRODUCT    = 40,
 	EXPONENT   = 50,
@@ -117,19 +117,20 @@ struct Parselet
 
 Parselet[*] pratt_table = {
 	[TokenType.LESS..TokenType.CT_OR_OP]
-	                    = { null,          &parse_binary,  0,  5, Assoc.LEFT },
+	                     = { null,          &parse_binary,  0,  5, Assoc.LEFT },
 	[TokenType.EQ..TokenType.CT_CONCAT_ASSIGN]
-	                    = { null,          &parse_assign,  0, 10, Assoc.RIGHT },
+	                     = { null,          &parse_assign,  0, 10, Assoc.RIGHT },
 	[TokenType.STRING..TokenType.CT_CONST_IDENT]
-	                    = { &parse_ident,  null,           0,  0, Assoc.NONE },
-	[TokenType.INTEGER] = { &parse_number, null,           0,  0, Assoc.NONE },
-	[TokenType.REAL]    = { &parse_number, null,           0,  0, Assoc.NONE },
-	[TokenType.PLUS]    = { &parse_unary,  &parse_binary, 60, 30, Assoc.LEFT },
-	[TokenType.MINUS]   = { &parse_unary,  &parse_binary, 60, 30, Assoc.LEFT },
-	[TokenType.STAR]    = { null,          &parse_binary,  0, 40, Assoc.LEFT },
-	[TokenType.DIV]     = { null,          &parse_binary,  0, 40, Assoc.LEFT },
-	[TokenType.LPAREN]  = { &parse_group,  &parse_call,    0, 80, Assoc.LEFT },
-	[TokenType.EOF]     = {},
+	                     = { &parse_ident,  null,           0,  0, Assoc.NONE },
+	[TokenType.QUESTION] = { null,          &parse_ternary, 0, 20, Assoc.RIGHT },
+	[TokenType.INTEGER]  = { &parse_number, null,           0,  0, Assoc.NONE },
+	[TokenType.REAL]     = { &parse_number, null,           0,  0, Assoc.NONE },
+	[TokenType.PLUS]     = { &parse_unary,  &parse_binary, 60, 30, Assoc.LEFT },
+	[TokenType.MINUS]    = { &parse_unary,  &parse_binary, 60, 30, Assoc.LEFT },
+	[TokenType.STAR]     = { null,          &parse_binary,  0, 40, Assoc.LEFT },
+	[TokenType.DIV]      = { null,          &parse_binary,  0, 40, Assoc.LEFT },
+	[TokenType.LPAREN]   = { &parse_group,  &parse_call,    0, 80, Assoc.LEFT },
+	[TokenType.EOF]      = {},
 };
 
 fn Expr*? parse_number(PrattParser *p, Token tok)
@@ -188,6 +189,27 @@ fn Expr*? parse_assign(PrattParser *p, Expr *left, Token tok)
 	return e;
 }
 
+fn Expr*? parse_ternary(PrattParser *p, Expr *left, Token tok)
+{
+	Parselet parselet = pratt_table[tok.type];
+
+	// If operator is right-associated, decrease binding power by one.
+	int next_bp = parselet.infix_bp - (parselet.assoc == Assoc.RIGHT ? 1 : 0);
+
+	Expr* then_arm = parse_expr(p, 0)!;
+
+	if (!p.match(TokenType.COLON))
+	{
+		abort("Expected ':'");
+	}
+
+	Expr* else_arm = parse_expr(p, next_bp)!;
+
+	Expr *e = mem::tnew(Expr);
+	*e = { .kind = TERNARY_EXPR, .as.t = { left, then_arm, else_arm } };
+
+	return e;
+}
 
 fn Expr*? parse_binary(PrattParser *p, Expr *left, Token tok)
 {
@@ -257,6 +279,13 @@ struct AssignExpression
 	Expr *right;
 }
 
+struct TernaryExpression
+{
+	Expr *condition;
+	Expr *then_arm;
+	Expr *else_arm;
+}
+
 struct BinaryExpression
 {
 	Token op;
@@ -279,6 +308,7 @@ enum ExprKind
 
 	// Infix Parselets
 	ASSIGN_EXPR,
+	TERNARY_EXPR,
 	BINARY_EXPR,
 	CALL_EXPR,
 }
@@ -287,12 +317,13 @@ struct Expr (Printable)
 {
 	ExprKind kind;
 	union as {
-		NumberExpression n;
-		IdentExpression  i;
-		UnaryExpression  u; // Prefix expressions
-		AssignExpression a;
-		BinaryExpression b; // Infix expressions
-		CallExpression   c;
+		NumberExpression  n;
+		IdentExpression   i;
+		UnaryExpression   u;
+		AssignExpression  a;
+		TernaryExpression t;
+		BinaryExpression  b;
+		CallExpression    c;
 	}
 }
 
@@ -301,12 +332,13 @@ fn usz? Expr.to_format(&self, Formatter *f) @dynamic
 	usz n;
 	switch (self.kind)
 	{
-		case NUMBER_EXPR: n += f.printf("%s", self.as.n)!;
-		case IDENT_EXPR:  n += f.printf("%s", self.as.i)!;
-		case UNARY_EXPR:  n += f.printf("( %s %s )", self.as.u.op, self.as.u.right)!;
-		case ASSIGN_EXPR: n += f.printf("( %s = %s )", self.as.a.op, self.as.a.right)!;
-		case BINARY_EXPR: n += f.printf("( %s %s %s )", self.as.b.left, self.as.b.op, self.as.b.right)!;
-		case CALL_EXPR:   n += f.printf("%s( %s )", self.as.c.func, self.as.c.args)!;
+		case NUMBER_EXPR:  n += f.printf("%s", self.as.n)!;
+		case IDENT_EXPR:   n += f.printf("%s", self.as.i)!;
+		case UNARY_EXPR:   n += f.printf("( %s %s )", self.as.u.op, self.as.u.right)!;
+		case ASSIGN_EXPR:  n += f.printf("( %s = %s )", self.as.a.op, self.as.a.right)!;
+		case TERNARY_EXPR: n += f.printf("( %s ? %s : %s )", self.as.t.condition, self.as.t.then_arm, self.as.t.else_arm)!;
+		case BINARY_EXPR:  n += f.printf("( %s %s %s )", self.as.b.left, self.as.b.op, self.as.b.right)!;
+		case CALL_EXPR:    n += f.printf("%s( %s )", self.as.c.func, self.as.c.args)!;
 	}
 	return n;
 }
