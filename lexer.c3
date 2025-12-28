@@ -10,16 +10,16 @@ enum TokenType : inline ushort
 
 	// Operators
 	AMP, BIT_OR, BIT_XOR, BIT_NOT, BANG, PLUS, MINUS, STAR, DIV, MOD,
-	QUESTION, OPTELSE, ELVIS, BANGBANG, BUILTIN, SHR_OP, SHL_OP, INC_OP,
-	DEC_OP, CT_CONCAT_OP, CT_TERNARY,
+	QUESTION, QUESTQUEST, ELVIS, BANGBANG, BUILTIN, SHR_OP, SHL_OP,
+	PLUSPLUS, MINUSMINUS, CT_CONCAT_OP, CT_TERNARY,
 
 	// Assignment
-	EQ, SHR_ASSIGN, SHL_ASSIGN, ADD_ASSIGN, MINUS_ASSIGN, MUL_ASSIGN,
-	DIV_ASSIGN, MOD_ASSIGN, AND_ASSIGN, XOR_ASSIGN, OR_ASSIGN,
+	EQ, SHR_ASSIGN, SHL_ASSIGN, PLUS_ASSIGN, MINUS_ASSIGN, MULT_ASSIGN,
+	DIV_ASSIGN, MOD_ASSIGN, BIT_AND_ASSIGN, BIT_XOR_ASSIGN, BIT_OR_ASSIGN,
 	CT_CONCAT_ASSIGN,
 
 	// Comparison
-	LESS, GREATER, AND, OR, LE_EQ, GE_EQ, EQEQ, NOT_EQUAL, CT_AND_OP,
+	LESS, GREATER, AND, OR, LESS_EQ, GREATER_EQ, EQEQ, NOT_EQUAL, CT_AND_OP,
 	CT_OR_OP,
 
 	// Punctuation
@@ -30,13 +30,18 @@ enum TokenType : inline ushort
 	LVEC, RVEC,
 
 	// Comments and Contracts
-	CONTRACT, LCOMMENT, BCOMMENT,
+	CONTRACT, LINE_COMMENT, BLOCK_COMMENT,
 
-	// Identifiers and Strings
+	// Literals (Identifiers and Strings)
 	STRING, CHAR_LITERAL, BYTES, INTEGER, REAL, IDENT, TYPE_IDENT,
 	CONST_IDENT, AT_IDENT, AT_TYPE_IDENT, AT_CONST_IDENT, HASH_IDENT,
 	HASH_TYPE_IDENT, HASH_CONST_IDENT, CT_IDENT, CT_TYPE_IDENT,
 	CT_CONST_IDENT,
+
+	// Base Types (base_type_no_generic)
+	VOID, BOOL, CHAR, ICHAR, SHORT, USHORT, INT, UINT, LONG, ULONG, INT128,
+	UINT128, FLOAT, DOUBLE, FLOAT16, BFLOAT16, FLOAT128, IPTR, UPTR, ISZ,
+	USZ, FAULT, ANY, TYPEID,
 
 	// Keywords
 	ALIAS, ASM, ASSERT, ATTRDEF, BITSTRUCT, CONST, ENUM, FAULTDEF, FUNC,
@@ -45,18 +50,13 @@ enum TokenType : inline ushort
 	FOREACH_R, IF, INLINE, LENGTHOF, NEXTCASE, NUL, RETURN, STATIC, SWITCH,
 	TLOCAL, TRUE, TRY, VAR, WHILE,
 
-	// Base Types (base_type_no_generic)
-	VOID, BOOL, CHAR, ICHAR, SHORT, USHORT, INT, UINT, LONG, ULONG, INT128,
-	UINT128, FLOAT, DOUBLE, FLOAT16, BFLOAT16, FLOAT128, IPTR, UPTR, ISZ,
-	USZ, FAULT, ANY, TYPEID,
-
 	CT_ALIGNOF, CT_ASSERT, CT_ASSIGNABLE, CT_CASE, CT_DEFAULT, CT_DEFINED,
 	CT_ECHO, CT_ELSE, CT_ENDFOR, CT_ENDFOREACH, CT_ENDIF, CT_ENDSWITCH,
 	CT_ERROR, CT_EVAL, CT_EVALTYPE, CT_EXEC, CT_EXTNAMEOF, CT_FEATURE,
 	CT_FOR, CT_FOREACH, CT_IF, CT_IS_CONST, CT_INCLUDE, CT_KINDOF,
 	CT_NAMEOF, CT_OFFSETOF, CT_QNAMEOF, CT_SIZEOF, CT_STRINGIFY, CT_SWITCH,
 	CT_TYPEFROM, CT_TYPEOF, CT_VAARG, CT_VACONST, CT_VACOUNT, CT_VAEXPR,
-	CT_VAREF, CT_VASPLAT, CT_VATYPE,
+	CT_VAREF, CT_VATYPE, CT_VASPLAT,
 
 	EOL, EOF,
 }
@@ -195,7 +195,7 @@ fn Token? Lexer.next(&self)
 		case '^':
 			switch
 			{
-				case self.must("^="): type = XOR_ASSIGN;
+				case self.must("^="): type = BIT_XOR_ASSIGN;
 				case self.must("^"):  type = BIT_XOR;
 				default: return INVALID_CHAR?;
 			}
@@ -203,7 +203,7 @@ fn Token? Lexer.next(&self)
 		case '*':
 			switch
 			{
-				case self.must("*="): type = MUL_ASSIGN;
+				case self.must("*="): type = MULT_ASSIGN;
 				case self.must("*"):  type = STAR;
 				default: return INVALID_CHAR?;
 			}
@@ -230,8 +230,8 @@ fn Token? Lexer.next(&self)
 			{
 				case self.must("+++="): type = CT_CONCAT_ASSIGN;
 				case self.must("+++"):  type = CT_CONCAT_OP;
-				case self.must("++"):   type = INC_OP;
-				case self.must("+="):   type = ADD_ASSIGN;
+				case self.must("++"):   type = PLUSPLUS;
+				case self.must("+="):   type = PLUS_ASSIGN;
 				case self.must("+"):    type = PLUS;
 				default: return INVALID_CHAR?;
 			}
@@ -239,7 +239,7 @@ fn Token? Lexer.next(&self)
 		case '-':
 			switch
 			{
-				case self.must("--"): type = DEC_OP;
+				case self.must("--"): type = MINUSMINUS;
 				case self.must("-="): type = MINUS_ASSIGN;
 				case self.must("->"): type = ARROW;
 				case self.must("-"):  type = MINUS;
@@ -267,7 +267,7 @@ fn Token? Lexer.next(&self)
 			switch
 			{
 				case self.must("???"): type = CT_TERNARY;
-				case self.must("??"):  type = OPTELSE;
+				case self.must("??"):  type = QUESTQUEST;
 				case self.must("?:"):  type = ELVIS;
 				case self.must("?"):   type = QUESTION;
 				default: return INVALID_CHAR?;
@@ -278,7 +278,7 @@ fn Token? Lexer.next(&self)
 			{
 				case self.must("|||"): type = CT_OR_OP;
 				case self.must("||"):  type = OR;
-				case self.must("|="):  type = OR_ASSIGN;
+				case self.must("|="):  type = BIT_OR_ASSIGN;
 				case self.must("|"):   type = BIT_OR;
 				default: return INVALID_CHAR?;
 			}
@@ -288,7 +288,7 @@ fn Token? Lexer.next(&self)
 			{
 				case self.must("&&&"): type = CT_AND_OP;
 				case self.must("&&"):  type = AND;
-				case self.must("&="):  type = AND_ASSIGN;
+				case self.must("&="):  type = BIT_AND_ASSIGN;
 				case self.must("&"):   type = AMP;
 				default: return INVALID_CHAR?;
 			}
@@ -307,7 +307,7 @@ fn Token? Lexer.next(&self)
 			{
 				case self.must(">>="): type = SHR_ASSIGN;
 				case self.must(">>"):  type = SHR_OP;
-				case self.must(">="):  type = GE_EQ;
+				case self.must(">="):  type = GREATER_EQ;
 				case self.must(">]"):  type = RVEC;
 				case self.must(">"):   type = GREATER;
 				default: return INVALID_CHAR?;
@@ -332,8 +332,8 @@ fn Token? Lexer.next(&self)
 		case '/':
 			switch
 			{
-				case self.must("//"): self.scan_line_comment()!;  type = LCOMMENT;
-				case self.must("/*"): self.scan_block_comment()!; type = BCOMMENT;
+				case self.must("//"): self.scan_line_comment()!;  type = LINE_COMMENT;
+				case self.must("/*"): self.scan_block_comment()!; type = BLOCK_COMMENT;
 				case self.must("/="): type = DIV_ASSIGN;
 				case self.must("/") : type = DIV;
 				default: return INVALID_CHAR?;
@@ -346,7 +346,7 @@ fn Token? Lexer.next(&self)
 				case self.must("<*"):  self.scan_contract()!; type = CONTRACT;
 				case self.must("<<="): type = SHL_ASSIGN;
 				case self.must("<<"):  type = SHL_OP;
-				case self.must("<="):  type = LE_EQ;
+				case self.must("<="):  type = LESS_EQ;
 				case self.must("<") :  type = LESS;
 				default: return INVALID_CHAR?;
 			}
@@ -366,7 +366,7 @@ fn Token? Lexer.next(&self)
 			{
 				case self.must("#!"):
 					self.scan_line_comment()!;
-					return self.emit_token(LCOMMENT);
+					return self.emit_token(LINE_COMMENT);
 				case self.must("#"):
 				case self.must("@"):
 					return self.lex_at_or_hash_ident()!;

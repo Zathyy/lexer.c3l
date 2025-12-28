@@ -89,8 +89,8 @@ fn bool? validate(String filename, String tokens, bool print_only = false) => @p
 		usz len;
 		switch (tok.type)
 		{
-			case LCOMMENT:
-			case BCOMMENT:
+			case LINE_COMMENT:
+			case BLOCK_COMMENT:
 				// Skip trivia tokens
 				continue;
 
@@ -143,21 +143,21 @@ fn String token_to_string(Token tok, bool doc_mode = false)
 	case DIV: return "/";
 	case MOD: return "%";
 	case QUESTION: return "?";
-	case OPTELSE: return "??";
+	case QUESTQUEST: return "??";
 	case ELVIS: return "?:";
 	case BANGBANG: return "!!";
 	case BUILTIN: return "$$";
 	case EQ: return "=";
 	case SHR_ASSIGN: return ">>=";
 	case SHL_ASSIGN: return "<<=";
-	case ADD_ASSIGN: return "+=";
+	case PLUS_ASSIGN: return "+=";
 	case MINUS_ASSIGN: return "-=";
-	case MUL_ASSIGN: return "*=";
+	case MULT_ASSIGN: return "*=";
 	case DIV_ASSIGN: return "/=";
 	case MOD_ASSIGN: return "%=";
-	case AND_ASSIGN: return "&=";
-	case XOR_ASSIGN: return "^=";
-	case OR_ASSIGN: return "|=";
+	case BIT_AND_ASSIGN: return "&=";
+	case BIT_XOR_ASSIGN: return "^=";
+	case BIT_OR_ASSIGN: return "|=";
 	case AMP: return "&";
 	case BIT_OR: return "|";
 	case BIT_XOR: return "^";
@@ -165,12 +165,12 @@ fn String token_to_string(Token tok, bool doc_mode = false)
 	case GREATER: return ">";
 	case SHR_OP: return ">>";
 	case SHL_OP: return "<<";
-	case INC_OP: return "++";
-	case DEC_OP: return "--";
+	case PLUSPLUS: return "++";
+	case MINUSMINUS: return "--";
 	case AND: return "&&";
 	case OR: return "||";
-	case LE_EQ: return "<=";
-	case GE_EQ: return ">=";
+	case LESS_EQ: return "<=";
+	case GREATER_EQ: return ">=";
 	case EQEQ: return "==";
 	case NOT_EQUAL: return "!=";
 	case CT_AND_OP: return "&&&";
@@ -196,8 +196,8 @@ fn String token_to_string(Token tok, bool doc_mode = false)
 	case LVEC: return "[<";
 	case RVEC: return ">]";
 	case CONTRACT: return "<* *>";
-	case LCOMMENT: return "";
-	case BCOMMENT: return "";
+	case LINE_COMMENT: return "";
+	case BLOCK_COMMENT: return "";
 	case STRING: return "STRING";
 	case CHAR_LITERAL: return "CHAR_LITERAL";
 	case BYTES: return "BYTES";
