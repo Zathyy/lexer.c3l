@@ -19,13 +19,41 @@ fn void main() => @pool()
 		p.init(s);
 		if (try e = p.parse())
 		{
-			io::printn(e);
+			io::printfn("eval: %s", e);
+			if (!p.lexer.at_end())
+			{
+				io::print("remaining tokens:");
+				while (!p.lexer.at_end())
+				{
+					io::printf(" %s", p.lexer.next() ?? (Token){});
+				}
+			}
 		}
 		else
 		{
 			io::printfn(" -- Parse() failed");
 		}
 		print_repl();
+	}
+}
+
+struct TestCase
+{
+	String input;
+	String want;
+}
+
+fn void test_pratt_parser() @test
+{
+	TestCase[] test = {
+		{ "a!", "<IDENT> a <BANG> !" },
+	};
+	foreach (tc: test)
+	{
+		PrattParser p;
+		p.init(tc.input);
+		String expr = string::tformat("%s", p.parse()!!);
+		assert(expr == tc.want, "Pratt Parser Test failed: got=%s, want=%s", expr, tc.want);
 	}
 }
 
@@ -67,7 +95,7 @@ fn Expr*? parse_expr(PrattParser *p, int min_bp)
 
 	Expr *left = parselet.prefix(p, tok)!;
 
-	while (!p.lexer.at_end())
+	while (true)
 	{
 		parselet = pratt_table[p.peek().type];
 		if (parselet.infix == null || min_bp >= parselet.infix_bp) break;
@@ -117,33 +145,34 @@ struct Parselet
 
 Parselet[*] pratt_table = {
 	[TokenType.LESS..TokenType.CT_OR_OP]
-	                     = { null,          &parse_binary,  0,  5, Assoc.LEFT },
+	                     = { null,          &parse_binary,   0,  5, Assoc.LEFT },
 	[TokenType.EQ..TokenType.CT_CONCAT_ASSIGN]
-	                     = { null,          &parse_assign,  0, 10, Assoc.RIGHT },
+	                     = { null,          &parse_assign,   0, 10, Assoc.RIGHT },
 	[TokenType.STRING..TokenType.CT_CONST_IDENT]
-	                     = { &parse_ident,  null,           0,  0, Assoc.NONE },
-	[TokenType.QUESTION] = { null,          &parse_ternary, 0, 20, Assoc.RIGHT },
-	[TokenType.INTEGER]  = { &parse_number, null,           0,  0, Assoc.NONE },
-	[TokenType.REAL]     = { &parse_number, null,           0,  0, Assoc.NONE },
-	[TokenType.PLUS]     = { &parse_unary,  &parse_binary, 60, 30, Assoc.LEFT },
-	[TokenType.MINUS]    = { &parse_unary,  &parse_binary, 60, 30, Assoc.LEFT },
-	[TokenType.STAR]     = { null,          &parse_binary,  0, 40, Assoc.LEFT },
-	[TokenType.DIV]      = { null,          &parse_binary,  0, 40, Assoc.LEFT },
-	[TokenType.LPAREN]   = { &parse_group,  &parse_call,    0, 80, Assoc.LEFT },
+	                     = { &parse_ident,  null,            0,  0, Assoc.NONE },
+	[TokenType.QUESTION] = { null,          &parse_ternary,  0, 20, Assoc.RIGHT },
+	[TokenType.INTEGER]  = { &parse_number, null,            0,  0, Assoc.NONE },
+	[TokenType.REAL]     = { &parse_number, null,            0,  0, Assoc.NONE },
+	[TokenType.PLUS]     = { &parse_unary,  &parse_binary,  60, 30, Assoc.LEFT },
+	[TokenType.MINUS]    = { &parse_unary,  &parse_binary,  60, 30, Assoc.LEFT },
+	[TokenType.STAR]     = { null,          &parse_binary,   0, 40, Assoc.LEFT },
+	[TokenType.DIV]      = { null,          &parse_binary,   0, 40, Assoc.LEFT },
+	[TokenType.BANG]     = { null,          &parse_postfix,  0, 70, Assoc.LEFT },
+	[TokenType.LPAREN]   = { &parse_group,  &parse_call,     0, 80, Assoc.LEFT },
 	[TokenType.EOF]      = {},
 };
 
 fn Expr*? parse_number(PrattParser *p, Token tok)
 {
 	Expr *e = mem::tnew(Expr);
-	*e = { .kind = NUMBER_EXPR, .as.n = tok };
+	*e = { .kind = NUMBER_EXPR, .as.n.number = tok };
 	return e;
 }
 
 fn Expr*? parse_ident(PrattParser *p, Token tok)
 {
 	Expr *e = mem::tnew(Expr);
-	*e = { .kind = IDENT_EXPR, .as.i = tok };
+	*e = { .kind = IDENT_EXPR, .as.i.ident = tok };
 	return e;
 }
 
@@ -184,8 +213,15 @@ fn Expr*? parse_assign(PrattParser *p, Expr *left, Token tok)
 	Expr* right = parse_expr(p, next_bp)!;
 
 	Expr *e = mem::tnew(Expr);
-	*e = { .kind = ASSIGN_EXPR, .as.a = { left.as.i, right} };
+	*e = { .kind = ASSIGN_EXPR, .as.a = { left.as.i.ident, right} };
 
+	return e;
+}
+
+fn Expr*? parse_postfix(PrattParser *p, Expr *left, Token tok)
+{
+	Expr *e = mem::tnew(Expr);
+	*e = { .kind = POSTFIX_EXPR, .as.p = { left, tok } };
 	return e;
 }
 
@@ -221,7 +257,7 @@ fn Expr*? parse_binary(PrattParser *p, Expr *left, Token tok)
 	Expr* right = parse_expr(p, next_bp)!;
 
 	Expr *e = mem::tnew(Expr);
-	*e = { .kind = BINARY_EXPR, .as.b = { tok, left, right} };
+	*e = { .kind = BINARY_EXPR, .as.b = { left, tok, right} };
 
 	return e;
 }
@@ -264,8 +300,15 @@ fn Expr*? parse_call(PrattParser *p, Expr *left, Token tok)
  Expressions
 */
 
-alias NumberExpression = Token;
-alias IdentExpression = Token;
+struct NumberExpression
+{
+	Token number;
+}
+
+struct IdentExpression
+{
+	Token ident;
+}
 
 struct UnaryExpression
 {
@@ -288,9 +331,15 @@ struct TernaryExpression
 
 struct BinaryExpression
 {
-	Token op;
 	Expr *left;
+	Token op;
 	Expr *right;
+}
+
+struct PostfixExpression
+{
+	Expr *left;
+	Token op;
 }
 
 struct CallExpression
@@ -310,6 +359,7 @@ enum ExprKind
 	ASSIGN_EXPR,
 	TERNARY_EXPR,
 	BINARY_EXPR,
+	POSTFIX_EXPR,
 	CALL_EXPR,
 }
 
@@ -323,6 +373,7 @@ struct Expr (Printable)
 		AssignExpression  a;
 		TernaryExpression t;
 		BinaryExpression  b;
+		PostfixExpression p;
 		CallExpression    c;
 	}
 }
@@ -332,12 +383,13 @@ fn usz? Expr.to_format(&self, Formatter *f) @dynamic
 	usz n;
 	switch (self.kind)
 	{
-		case NUMBER_EXPR:  n += f.printf("%s", self.as.n)!;
-		case IDENT_EXPR:   n += f.printf("%s", self.as.i)!;
+		case NUMBER_EXPR:  n += f.printf("%s", self.as.n.number)!;
+		case IDENT_EXPR:   n += f.printf("%s", self.as.i.ident)!;
 		case UNARY_EXPR:   n += f.printf("( %s %s )", self.as.u.op, self.as.u.right)!;
 		case ASSIGN_EXPR:  n += f.printf("( %s = %s )", self.as.a.op, self.as.a.right)!;
 		case TERNARY_EXPR: n += f.printf("( %s ? %s : %s )", self.as.t.condition, self.as.t.then_arm, self.as.t.else_arm)!;
 		case BINARY_EXPR:  n += f.printf("( %s %s %s )", self.as.b.left, self.as.b.op, self.as.b.right)!;
+		case POSTFIX_EXPR: n += f.printf("( %s %s )", self.as.p.left, self.as.p.op)!;
 		case CALL_EXPR:    n += f.printf("%s( %s )", self.as.c.func, self.as.c.args)!;
 	}
 	return n;
