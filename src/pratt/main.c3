@@ -457,9 +457,7 @@ fn Expr *parse_type_expr_with_path(PrattParser *p, Token tok, Path *path)
 
 	if (p.peek().type == TokenType.LBRACE)
 	{
-		// FIXME: needs to be implemented
-		// return parse_type_compount_literal_expr_after_type(p, type);
-		unreachable("not implemented yet");
+		return parse_type_compound_literal_expr_after_type(p, type);
 	}
 
 	Expr *expr = mem::tnew(Expr);
@@ -474,13 +472,68 @@ fn Expr *parse_type_expr_with_path(PrattParser *p, Token tok, Path *path)
 	return expr;
 }
 
+<*
+ Expects an initializer list, then appends the type making it a compound expr
+ rather than initializer list.
+*>
+fn Expr* parse_type_compound_literal_expr_after_type(PrattParser *p, TypeInfo *type_info)
+{
+	Expr *expr = mem::tnew(Expr);
+	expr.kind = EXPR_COMPOUND_LITERAL;
+	expr.as.compound_literal.type_info = type_info;
+	expr.as.compound_literal.initializer = parse_initializer_list(p, null);
+	return expr;
+}
+
+<*
+ initializer_list
+ 	: '{' initializer_values '}'
+      | '{' initializer_values ',' '}'
+      ;
+
+ initializer_values
+      : initializer
+      | initializer_values ',' initializer
+      ;
+
+ Expr *left is not used, we just the function signature for the infix parslet.
+*>
+fn Expr* parse_initializer_list(PrattParser *p, Expr *left)
+{
+	ExprInitializerList list;
+	if (p.peek().type == TokenType.LBRACE) list.open = p.consume();
+	if (p.peek().type != TokenType.RBRACE)
+	{
+		list.list.tinit();
+		if (!parse_init_list(p, &list.list, TokenType.RBRACE, null, true))
+		{
+			list.list.free();
+			return bad_expr("parse_init_list failed");
+		}
+
+		if (p.peek().type != TokenType.RBRACE)
+		{
+			list.list.free();
+			return bad_expr("A comma or '}' was expected here.");
+		}
+	}
+	list.close = p.consume();
+	return mem::tnew(Expr, { .kind = EXPR_INITIALIZER_LIST, .as.initializer_list = list });
+}
+
+fn bool parse_init_list(PrattParser *p, List{Expr*} *result, TokenType param_end, bool *splat, bool vasplat)
+{
+	// WIP: I'm currently here (parse_expr.c: 502)
+	return false;
+}
+
 fn TypeInfo* parse_optional_type(PrattParser *p) => parse_optional_type_maybe_generic(p, true);
 fn TypeInfo* parse_optional_type_no_generic(PrattParser *p) => parse_optional_type_maybe_generic(p, false);
 
 fn TypeInfo* parse_optional_type_maybe_generic(PrattParser *p, bool allow_generic)
 {
 	TypeInfo *info = parse_base_type(p)!!; // TODO: Propagate error
-	info = parse_type_with_base_maybe_generic(c, info, allow_generic);
+	info = parse_type_with_base_maybe_generic(p, info, allow_generic);
 	if (p.peek().type == TokenType.QUESTION)
 	{
 		info.is_optional = true;
@@ -808,6 +861,12 @@ struct ExprCast
 	Token close;
 }
 
+struct ExprCompoundLiteral
+{
+	Expr     *initializer;
+	TypeInfo *type_info;
+}
+
 struct ExprGroup
 {
 	Token open;
@@ -819,6 +878,13 @@ struct ExprIdent
 {
 	Path* path;
 	Token ident;
+}
+
+struct ExprInitializerList
+{
+	Token       open;
+	Token       close;
+	List{Token} list;
 }
 
 struct ExprTernary
@@ -937,9 +1003,11 @@ enum ExprKind
 	EXPR_CALL,
 	EXPR_CAST,
 	EXPR_COMPILER_CONST,
+	EXPR_COMPOUND_LITERAL,
 	EXPR_CONST,
 	EXPR_GROUP,
 	EXPR_IDENT,
+	EXPR_INITIALIZER_LIST,
 	EXPR_UNARY,
 	EXPR_TERNARY,
 	EXPR_TOKEN,
@@ -958,8 +1026,10 @@ struct Expr (Printable)
 		ExprCall    call_expr;
 		ExprCast    cast_expr;
 		ExprConst   const_expr;
+		ExprCompoundLiteral compound_literal;
 		ExprGroup   group_expr;
 		ExprIdent   ident_expr;
+		ExprInitializerList initializer_list;
 		ExprTernary ternary_expr;
 		ExprToken   token_expr;
 		TypeInfo    *type_expr;
@@ -974,21 +1044,23 @@ fn usz? Expr.to_format(&self, Formatter *f) @dynamic
 	usz n;
 	switch (self.kind)
 	{
-		case EXPR_BAD:      n += f.printf("(ExprBad %s)", self.as.bad_expr.msg)!;
-		case EXPR_BINARY:   n += f.printf("(%s %s %s)", self.as.binary_expr.left, self.as.binary_expr.op, self.as.binary_expr.right)!;
-		case EXPR_CALL:     n += f.printf("(ExprCall %s( %s ))", self.as.call_expr.func, self.as.call_expr.args)!;
+		case EXPR_BAD:              n += f.printf("(ExprBad %s)", self.as.bad_expr.msg)!;
+		case EXPR_BINARY:           n += f.printf("(%s %s %s)", self.as.binary_expr.left, self.as.binary_expr.op, self.as.binary_expr.right)!;
+		case EXPR_CALL:             n += f.printf("(ExprCall %s( %s ))", self.as.call_expr.func, self.as.call_expr.args)!;
 		case EXPR_COMPILER_CONST:
-		case EXPR_BUILTIN:  n += f.printf("(ExprBuiltin %s)", self.as.builtin_expr.ident)!;
-		case EXPR_CAST:     n += f.printf("(ExprCast (%s))", self.as.cast_expr.type)!;
-		case EXPR_CONST:    n += f.printf("(ExprConst %s)", self.as.const_expr)!;
-		case EXPR_GROUP:    n += f.printf("(ExprGroup %s %s %s))", self.as.group_expr.open, self.as.group_expr.expr, self.as.group_expr.close)!;
-		case EXPR_IDENT:    n += f.printf("(ExprIdent %s)", self.as.ident_expr.ident)!;
-		case EXPR_TERNARY:  n += f.printf("(%s ? %s : %s)", self.as.ternary_expr.condition, self.as.ternary_expr.then_arm, self.as.ternary_expr.else_arm)!;
-		case EXPR_TOKEN:    n += f.printf("(ExprToken %s)", self.as.token_expr.token)!;
-		case EXPR_TYPEINFO: n += f.printf("<not implemented yet>")!;
-		case EXPR_UNARY:    n += f.printf("( %s %s )", self.as.unary_expr.op, self.as.unary_expr.right)!;
+		case EXPR_BUILTIN:          n += f.printf("(ExprBuiltin %s)", self.as.builtin_expr.ident)!;
+		case EXPR_CAST:             n += f.printf("(ExprCast (%s))", self.as.cast_expr.type)!;
+		case EXPR_CONST:            n += f.printf("(ExprConst %s)", self.as.const_expr)!;
+		case EXPR_COMPOUND_LITERAL: n += f.printf("(ExprCompoundLiteral %s)", self.as.compound_literal)!;
+		case EXPR_GROUP:            n += f.printf("(ExprGroup %s %s %s))", self.as.group_expr.open, self.as.group_expr.expr, self.as.group_expr.close)!;
+		case EXPR_IDENT:            n += f.printf("(ExprIdent %s)", self.as.ident_expr.ident)!;
+		case EXPR_INITIALIZER_LIST: n += f.printf("(ExprInitializerLIst %s)", self.as.initializer_list)!;
+		case EXPR_TERNARY:          n += f.printf("(%s ? %s : %s)", self.as.ternary_expr.condition, self.as.ternary_expr.then_arm, self.as.ternary_expr.else_arm)!;
+		case EXPR_TOKEN:            n += f.printf("(ExprToken %s)", self.as.token_expr.token)!;
+		case EXPR_TYPEINFO:         n += f.printf("<not implemented yet>")!;
+		case EXPR_UNARY:            n += f.printf("( %s %s )", self.as.unary_expr.op, self.as.unary_expr.right)!;
 
-		case POSTFIX_EXPR:  n += f.printf("( %s %s )", self.as.p.left, self.as.p.op)!;
+		case POSTFIX_EXPR:          n += f.printf("( %s %s )", self.as.p.left, self.as.p.op)!;
 	}
 	return n;
 }
