@@ -86,7 +86,7 @@ fn bool PrattParser.match(&self, TokenType expect)
 
 fn Expr*? PrattParser.parse(&self) => parse_expr(self, 0)!;
 
-fn Expr*? parse_expr(PrattParser *p, int min_bp)
+fn Expr*? parse_expr(PrattParser *p, int min_bp = Precedence.NONE)
 {
 	Token tok = p.consume();
 
@@ -245,7 +245,12 @@ Parselet[*] pratt_table = {
 	[TokenType.EOF]          = {},
 };
 
-faultdef POISONED_EXPR;
+fn Expr* bad_expr(String msg)
+{
+	Expr *e = mem::tnew(Expr);
+	*e = { .kind = EXPR_BAD, .as.bad_expr = {msg} };
+	return e;
+}
 
 fn bool token_is_some_ident(Token tok) @inline
 {
@@ -264,8 +269,7 @@ fn Expr*? parse_builtin(PrattParser *p, Token tok)
 {
 	if (!token_is_some_ident(p.peek()))
 	{
-		// Unexpected '$$', did you mean to write a builtin?
-		return POISONED_EXPR?;
+		return bad_expr("Unexpected '$$', did you mean to write a builtin?");
 	}
 	tok = p.consume(); // Consume '$$'
 
@@ -406,7 +410,7 @@ fn void test_parse_prefix() @test => @pool()
 fn Expr*? parse_ident_start_expr(PrattParser *p, Token tok)
 {
 	Path *path;
-	if (!parse_path_prefix(p, &tok, &path)) return POISONED_EXPR?;
+	if (!parse_path_prefix(p, &tok, &path)) return bad_expr("parse_path_prefix failed");
 
 	switch (tok.type)
 	{
@@ -417,24 +421,253 @@ fn Expr*? parse_ident_start_expr(PrattParser *p, Token tok)
 			expr.as.ident_expr.path = path;
 			return expr;
 		case TokenType.TYPE_IDENT:
-			// FIXME: implement this
-			// return parse_type_expr_with_path(p, tok, path);
-			return POISONED_EXPR?;
+			return parse_type_expr_with_path(p, tok, path);
 		default:
 			// Expected a type, function or constant.
-			return POISONED_EXPR?;
+			return bad_expr("Expected a type, function or constant.");
 	}
 }
 
+<*
+ type_expression_with_path ::= TYPE_IDENT initializer_list?
+*>
+fn Expr *parse_type_expr_with_path(PrattParser *p, Token tok, Path *path)
+{
+	TypeInfo *type;
+	if (path)
+	{
+		type = mem::tnew(TypeInfo);
+		type.unresolved.path = path;
+		type.unresolved.name = tok;
+
+		if (p.peek().type == TokenType.TYPE_IDENT) tok = p.consume();
+
+		type = parse_type_with_base(p, type);
+
+		if (p.peek().type == TokenType.QUESTION)
+		{
+			type.optional = p.consume();
+			type.is_optional = true;
+		}
+	}
+	else
+	{
+		// FIXME: needs to be implemented
+		// type = parse_optional_type(p);
+		unreachable("not implemented yet");
+	}
+
+	if (p.peek().type == TokenType.LBRACE)
+	{
+		// FIXME: needs to be implemented
+		// return parse_type_compount_literal_expr_after_type(p, type);
+		unreachable("not implemented yet");
+	}
+
+	Expr *expr = mem::tnew(Expr);
+	expr.kind = EXPR_TYPEINFO;
+	expr.as.type_expr = type;
+
+	if (p.peek().type == TokenType.SCOPE)
+	{
+		return bad_expr("A type is never followed by '::', "
+			"did you mean '.'?");
+	}
+	return expr;
+}
+
+fn TypeInfo* parse_type_with_base(PrattParser *p, TypeInfo *type_info)
+{
+	return parse_type_with_base_maybe_generic(p, type_info, true);
+}
+
+<*
+ type ::= base_type ( '*' | array_type_index | vector_type_index | generic_parameters )
+*>
+fn TypeInfo* parse_type_with_base_maybe_generic(PrattParser *p,
+	TypeInfo *type_info, bool allow_generic)
+{
+	while (type_info && type_info.kind != TypeInfoKind.POISON)
+	{
+		switch (p.peek().type)
+		{
+			case TokenType.LBRACKET:
+				type_info = parse_array_type_index(p, type_info);
+			case TokenType.LVEC:
+				type_info = parse_vector_type_index(p, type_info);
+			case TokenType.LBRACE:
+				if (!allow_generic) return type_info;
+				type_info = parse_generic_type(p, type_info);
+			case TokenType.STAR:
+				Token tok = p.consume(); // Consume '*'
+				switch (tok.type)
+				{
+					// FIXME: complete Switch Statement
+					default:
+				}
+			default: return type_info;
+		}
+	}
+	return type_info;
+}
+
+<*
+ array_type_index ::= '[' (constant_expression | '*' )? ']'
+*>
+fn TypeInfo* parse_array_type_index(PrattParser *p, TypeInfo *type)
+{
+	Token open, close;
+
+	if (p.peek().type == LBRACKET) open = p.consume(); // Consume '['
+
+	if (p.peek().type == STAR)
+	{
+		TypeInfo *inferred_array = mem::tnew(TypeInfo);
+		inferred_array.kind = TypeInfoKind.INFERRED_ARRAY;
+		inferred_array.array.base = type;
+
+		if (p.peek().type == RBRACKET) close = p.consume(); // Consume ']'
+		return inferred_array;
+	}
+
+	if (p.peek().type == RBRACKET)
+	{
+		close = p.consume(); // Consume ']'
+		TypeInfo *slice = mem::tnew(TypeInfo);
+		slice.kind = TypeInfoKind.SLICE;
+		slice.array.base = type;
+		slice.array.len  = null;
+		return slice;
+	}
+
+	TypeInfo *array = mem::tnew(TypeInfo);
+	array.kind = TypeInfoKind.ARRAY;
+	array.array.base = type;
+	array.array.len  = parse_expr(p, Precedence.NONE)!!; // TODO: Propagate error?
+	close = p.consume(); // Consume ']'
+	assert(close.type == TokenType.RBRACKET);
+
+	return array;
+}
+
+<*
+ vector_type_index ::= '[<' (constant_expression | '*' ) '>]'
+*>
+fn TypeInfo* parse_vector_type_index(PrattParser *p, TypeInfo *type)
+{
+	TypeInfo *vector = mem::tnew(TypeInfo);
+	vector.kind = TypeInfoKind.VECTOR;
+	vector.array.base = type;
+
+	Token open, close;
+	open = p.consume(); // Consume '[<'
+	assert(open.type == LVEC);
+
+	if (p.peek().type == STAR)
+	{
+		Token star = p.consume(); // Consume '*'
+		assert(star.type == STAR);
+		vector.kind = TypeInfoKind.INFERRED_VECTOR;
+	}
+	else
+	{
+		vector.array.len = parse_expr(p, Precedence.NONE)!!; // TODO: Propagate error
+	}
+
+	close = p.consume();
+	if (close.type != TokenType.RVEC) vector.kind = TypeInfoKind.POISON;
+
+	if (p.peek().type == AT_IDENT)
+	{
+		p.consume(); // TODO: Here only @simd is allowed;
+	}
+
+	return vector;
+}
+
+fn TypeInfo* parse_generic_type(PrattParser *p, TypeInfo *type)
+{
+	TypeInfo *generic_type = mem::tnew(TypeInfo);
+	generic_type.kind = TypeInfoKind.GENERIC;
+	generic_type.generic.params.tinit();
+	if (!parse_generic_expr_list(p, &generic_type.generic.params))
+	{
+		generic_type.kind = TypeInfoKind.POISON;
+		generic_type.poison = "parse_generic_expr_list returned false";
+	}
+	generic_type.generic.base = type;
+	return generic_type;
+}
+
+fn bool parse_generic_expr_list(PrattParser *p, List{Expr*} *params)
+{
+	if (p.peek().type == TokenType.LBRACE)
+	{
+		Expr *open = mem::tnew(Expr, { .kind = EXPR_TOKEN, .as.token_expr.token = p.consume() });
+		params.push(open);
+	}
+
+	while (p.peek().type != TokenType.RBRACE)
+	{
+		if (try expr = parse_expr(p)) params.push(expr);
+		if (p.peek().type == TokenType.COMMA)
+		{
+			Expr *comma = mem::tnew(Expr, { .kind = EXPR_TOKEN, .as.token_expr.token = p.consume() });
+			params.push(comma);
+		}
+	}
+	if (p.peek().type == TokenType.RBRACE)
+	{
+		Expr *close = mem::tnew(Expr, { .kind = EXPR_TOKEN, .as.token_expr.token = p.consume() });
+		params.push(close);
+		return true;
+	}
+
+	// TODO: Something's wrong here: exepected RBRACE
+	return false;
+}
+
+<*
+ grouping_expr ::= cast_expr | group_expr
+
+ cast_expr ::= '(' type ')' expr
+ group_expr ::= '(' expr ')'
+
+ TODO: implement cast_expr
+*>
 fn Expr*? parse_group(PrattParser *p, Token tok)
 {
-	Expr *e = parse_expr(p, 0)!;
-	if (!p.match(TokenType.RPAREN))
+	Token open, close;
+	Expr *expr;
+
+	open = tok;
+	expr = parse_expr(p, Precedence.NONE)!;
+	close = p.peek();
+
+	if (p.peek().type != TokenType.RPAREN) return bad_expr("parse_group failed: expected RPAREN token");
+
+	switch (expr.kind)
 	{
-		// TODO: Better throw error than abort
-		abort("Unclosed parenthesis");
+		case EXPR_TYPEINFO:
+			// Read compound literal
+			if (p.peek().type == TokenType.LBRACE)
+			{
+				// FIXME: after implementing parse_type_expression_with_path
+				// expr = parse_type_compound_literal_expr_after_type(p, expr);
+				return expr;
+			}
+
+			// Create cast_expr
+
+			Expr *new = mem::tnew(Expr);
+			*new = { .kind = EXPR_CAST, .as.cast_expr = { open, expr, close} };
+			return new;
+		default:
+			Expr *new = mem::tnew(Expr);
+			*new = { .kind = EXPR_GROUP, .as.group_expr = { open, expr, close} };
+			return new;
 	}
-	return e;
+
 }
 
 fn Expr*? parse_unary(PrattParser *p, Token tok)
@@ -445,7 +678,7 @@ fn Expr*? parse_unary(PrattParser *p, Token tok)
 	Expr* right = parse_expr(p, next_bp)!;
 
 	Expr *e = mem::tnew(Expr);
-	*e = { .kind = UNARY_EXPR, .as.u = { tok, right} };
+	*e = { .kind = EXPR_UNARY, .as.unary_expr = { tok, right} };
 
 	return e;
 }
@@ -532,20 +765,46 @@ fn Expr*? parse_call(PrattParser *p, Expr *left, Token tok)
  Expressions
 */
 
-struct UnaryExpression
+struct ExprBad
 {
+	String msg;
+}
+
+struct ExprBinary
+{
+	Expr *left;
 	Token op;
 	Expr *right;
 }
 
-struct ExprIdent
+struct ExprBuiltin
 {
-	Path  *path;
 	Token ident;
 }
 
-struct ExprBuiltin
+struct ExprCall
 {
+	Expr        *func;
+	List{Expr*} args;
+}
+
+struct ExprCast
+{
+	Token open;
+	Expr  *type;
+	Token close;
+}
+
+struct ExprGroup
+{
+	Token open;
+	Expr  *expr;
+	Token close;
+}
+
+struct ExprIdent
+{
+	Path* path;
 	Token ident;
 }
 
@@ -556,23 +815,67 @@ struct ExprTernary
 	Expr *else_arm;
 }
 
-struct ExprBinary
+struct ExprToken
 {
-	Expr *left;
+	Token token;
+}
+
+struct ExprUnary
+{
 	Token op;
 	Expr *right;
+}
+
+enum TypeInfoKind
+{
+	POISON,
+	IDENTIFIER,
+	CT_IDENTIFIER,
+	TYPEOF,
+	VATYPE,
+	EVALTYPE,
+	TYPEFROM,
+	ARRAY,
+	VECTOR,
+	INFERRED_ARRAY,
+	INFERRED_VECTOR,
+	SLICE,
+	POINTER,
+	GENERIC,
+}
+
+struct TypeInfo
+{
+	TypeInfoKind kind;
+	// Type         *type; // parse_type_with_base(p, type)
+
+	bool         is_optional;
+	Token        optional;
+
+	// TODO: Pack this into an union?
+	union {
+		struct unresolved {
+			Path  *path;
+			Token name;
+		}
+		Expr *unresolved_type_expr;
+		struct array {
+			TypeInfo *base;
+			Expr *len;
+		}
+		TypeInfo *pointer;
+		struct generic {
+			TypeInfo    *base;
+			List{Expr*} params;
+		}
+		String poison;
+	}
 }
 
 struct PostfixExpression
 {
 	Expr *left;
 	Token op;
-}
-
-struct ExprCall
-{
-	Expr*       func;
-	List{Expr*} args;
 }
 
 enum ConstKind
@@ -615,34 +918,39 @@ fn usz? ExprConst.to_format(&self, Formatter *f) @dynamic
 
 enum ExprKind
 {
-	// Prefix Parselets
-	EXPR_CONST,
-	EXPR_IDENT,
-	UNARY_EXPR,
-
-	// Infix Parselets
-	EXPR_TERNARY,
+	EXPR_BAD,
 	EXPR_BINARY,
-	POSTFIX_EXPR,
-	EXPR_CALL,
-
 	EXPR_BUILTIN,
+	EXPR_CALL,
+	EXPR_CAST,
 	EXPR_COMPILER_CONST,
+	EXPR_CONST,
+	EXPR_GROUP,
+	EXPR_IDENT,
+	EXPR_UNARY,
+	EXPR_TERNARY,
+	EXPR_TOKEN,
+	EXPR_TYPEINFO,
+
+	POSTFIX_EXPR,
 }
 
 struct Expr (Printable)
 {
 	ExprKind kind;
 	union as {
-		ExprConst   const_expr;
-		ExprTernary ternary_expr;
+		ExprBad     bad_expr;
 		ExprBinary  binary_expr;
-		ExprCall    call_expr;
-		ExprIdent   ident_expr;
 		ExprBuiltin builtin_expr;
-
-		UnaryExpression   u;
-
+		ExprCall    call_expr;
+		ExprCast    cast_expr;
+		ExprConst   const_expr;
+		ExprGroup   group_expr;
+		ExprIdent   ident_expr;
+		ExprTernary ternary_expr;
+		ExprToken   token_expr;
+		TypeInfo    *type_expr;
+		ExprUnary   unary_expr;
 
 		PostfixExpression p;
 	}
@@ -653,16 +961,21 @@ fn usz? Expr.to_format(&self, Formatter *f) @dynamic
 	usz n;
 	switch (self.kind)
 	{
-		case EXPR_CONST:   n += f.printf("(ExprConst %s)", self.as.const_expr)!;
-		case EXPR_IDENT:   n += f.printf("(ExprIdent %s%s)", self.as.ident_expr.path ? self.as.ident_expr.path.path.str_view() : "", self.as.ident_expr.ident)!;
+		case EXPR_BAD:      n += f.printf("(ExprBad %s)", self.as.bad_expr.msg)!;
+		case EXPR_BINARY:   n += f.printf("(%s %s %s)", self.as.binary_expr.left, self.as.binary_expr.op, self.as.binary_expr.right)!;
+		case EXPR_CALL:     n += f.printf("(ExprCall %s( %s ))", self.as.call_expr.func, self.as.call_expr.args)!;
 		case EXPR_COMPILER_CONST:
-		case EXPR_BUILTIN: n += f.printf("(ExprBuiltin %s)", self.as.builtin_expr.ident)!;
-		case EXPR_TERNARY: n += f.printf("(%s ? %s : %s)", self.as.ternary_expr.condition, self.as.ternary_expr.then_arm, self.as.ternary_expr.else_arm)!;
-		case EXPR_BINARY:  n += f.printf("(%s %s %s)", self.as.binary_expr.left, self.as.binary_expr.op, self.as.binary_expr.right)!;
-		case EXPR_CALL:    n += f.printf("(ExprCall %s( %s ))", self.as.call_expr.func, self.as.call_expr.args)!;
+		case EXPR_BUILTIN:  n += f.printf("(ExprBuiltin %s)", self.as.builtin_expr.ident)!;
+		case EXPR_CAST:     n += f.printf("(ExprCast (%s))", self.as.cast_expr.type)!;
+		case EXPR_CONST:    n += f.printf("(ExprConst %s)", self.as.const_expr)!;
+		case EXPR_GROUP:    n += f.printf("(ExprGroup %s %s %s))", self.as.group_expr.open, self.as.group_expr.expr, self.as.group_expr.close)!;
+		case EXPR_IDENT:    n += f.printf("(ExprIdent %s)", self.as.ident_expr.ident)!;
+		case EXPR_TERNARY:  n += f.printf("(%s ? %s : %s)", self.as.ternary_expr.condition, self.as.ternary_expr.then_arm, self.as.ternary_expr.else_arm)!;
+		case EXPR_TOKEN:    n += f.printf("(ExprToken %s)", self.as.token_expr.token)!;
+		case EXPR_TYPEINFO: n += f.printf("<not implemented yet>")!;
+		case EXPR_UNARY:    n += f.printf("( %s %s )", self.as.unary_expr.op, self.as.unary_expr.right)!;
 
-		case UNARY_EXPR:   n += f.printf("( %s %s )", self.as.u.op, self.as.u.right)!;
-		case POSTFIX_EXPR: n += f.printf("( %s %s )", self.as.p.left, self.as.p.op)!;
+		case POSTFIX_EXPR:  n += f.printf("( %s %s )", self.as.p.left, self.as.p.op)!;
 	}
 	return n;
 }
