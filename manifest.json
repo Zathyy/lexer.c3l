@@ -1,6 +1,5 @@
 {
   "provides" : "lexer",
-  "sources" : [ "*" ],
   "targets" : {
     "android-aarch64" : {
       // Extra flags to the linker for this target:
