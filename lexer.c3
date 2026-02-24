@@ -63,12 +63,12 @@ enum TokenType : inline ushort
 
 struct Token (Printable)
 {
-	TokenType type;
 	String    text;
 	usz       offset;
 	usz       len;
 	usz       ln, col;
 	usz       nl_before;
+	TokenType type;
 }
 
 fn usz? Token.to_format(&self, Formatter *f) @dynamic
@@ -87,11 +87,11 @@ fn usz? Token.to_format(&self, Formatter *f) @dynamic
 struct Lexer
 {
 	String input;
-	bool emit_eol;
 	usz  pos;
 	usz  ln, col;
 	usz  token_start;
 	usz  nl_before;
+	bool emit_eol;
 }
 
 fn Lexer* Lexer.init(&self, String input, bool emit_eol = false)
