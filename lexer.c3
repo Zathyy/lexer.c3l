@@ -733,20 +733,20 @@ module c3::lexer::number;
 
 enum NumberState : inline char (TokenType type) @private
 {
-	ERROR     = INVALID,
-	INIT      = INVALID,
-	INTEGER   = INTEGER,
-	ZERO      = INTEGER,
-	HEXINT    = INTEGER,
-	OCTINT    = INTEGER,
-	BININT    = INTEGER,
-	INTSUFFIX = INTEGER,  // Integer suffix: ([iu](8|16|32|64|128)|[uU][lL]|[lL])
-	REAL      = REAL,
-	INTDEC    = REAL,     // Integer decimal: INT "." INT
-	EDIGITS   = REAL,     // Exponent digits
-	HEXDEC    = INVALID,  // Hexadecimal "decimal": HEXINT "." HEXINT
-	EXPONENT  = INVALID,  // E-notation [eEpP]
-	EXPSIGN   = INVALID,  // Exponent sign: +, -
+	ERROR     { INVALID },
+	INIT      { INVALID },
+	INTEGER   { INTEGER },
+	ZERO      { INTEGER },
+	HEXINT    { INTEGER },
+	OCTINT    { INTEGER },
+	BININT    { INTEGER },
+	INTSUFFIX { INTEGER },  // Integer suffix: ([iu](8|16|32|64|128)|[uU][lL]|[lL])
+	REAL      { REAL },
+	INTDEC    { REAL },     // Integer decimal: INT "." INT
+	EDIGITS   { REAL },     // Exponent digits
+	HEXDEC    { INVALID },  // Hexadecimal "decimal": HEXINT "." HEXINT
+	EXPONENT  { INVALID },  // E-notation [eEpP]
+	EXPSIGN   { INVALID },  // Exponent sign: +, -
 }
 
 const NumberState[char.max+1][*] TRANSITIONS @private = {
@@ -870,11 +870,11 @@ fn void test_number_classify() @test
 module c3::lexer::ident;
 
 enum IdentState : inline char (bool accept) @private {
-	ERROR_STATE = false,
-	INIT_STATE  = false,
-	IDENT_STATE = true,
-	TYPE_STATE  = true,
-	CONST_STATE = true,
+	ERROR_STATE  { false },
+	INIT_STATE   { false },
+	IDENT_STATE  { true  },
+	TYPE_STATE   { true  },
+	CONST_STATE  { true  },
 }
 
 const IdentState[char.max+1][*] TRANSITIONS @private = {
